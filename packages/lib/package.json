@@ -1,0 +1,18 @@
+{
+  "name": "@habit-tracker/lib",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./supabase": "./src/supabase.ts",
+    "./habits": "./src/habits.ts",
+    "./streaks": "./src/streaks.ts",
+    "./dates": "./src/dates.ts"
+  },
+  "dependencies": {
+    "@habit-tracker/types": "workspace:*",
+    "@supabase/supabase-js": "^2.47.10"
+  }
+}
