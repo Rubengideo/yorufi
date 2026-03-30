@@ -4,8 +4,6 @@ import { Resend } from 'resend'
 import { getTasks } from '@habit-tracker/lib'
 import { buildDigestEmail } from '@/lib/email/digest'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-
 function getAdminClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -83,6 +81,7 @@ export async function GET(req: NextRequest) {
       date,
     })
 
+    const resend = new Resend(process.env.RESEND_API_KEY)
     const fromEmail = process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev'
 
     await resend.emails.send({
