@@ -2,24 +2,28 @@
 
 import { useRef, useState } from 'react'
 import Papa from 'papaparse'
-import { useCreateExpense } from '@/hooks/useExpenses'
+import { useQueryClient } from '@tanstack/react-query'
 import { EXPENSE_CATEGORIES, type ExpenseCategory } from '@habit-tracker/types'
 
 // ─── Auto-categorisatie ──────────────────────────────────────
 
 const CATEGORY_RULES: { pattern: RegExp; category: ExpenseCategory }[] = [
   { pattern: /albert heijn|jumbo|lidl|aldi|plus supermarkt|dirk|ah |spar /i, category: 'boodschappen' },
-  { pattern: /ns |ov-chip|shell|esso|bp |q8|total energy|parkeer|parking|sixt|uber|bolt taxi/i, category: 'transport' },
-  { pattern: /netflix|spotify|apple |disney|videoland|amazon prime|ziggo|kpn|t-mobile|tele2|hollandsnieuwe/i, category: 'abonnementen' },
-  { pattern: /zorgverzeker|apotheek|tandarts|huisarts|fysiotherap|ziekenhuis|cz |vgz |dsw |menzis|achmea/i, category: 'gezondheid' },
-  { pattern: /restaurant|café|cafe |pizza|sushi|mcdonalds|kfc|burger king|subway|starbucks|domino|thuisbezorgd|deliveroo|uber eat/i, category: 'horeca' },
-  { pattern: /zara|h&m|zalando|primark|ikea|action |hema |bijenkorf|coolblue|bol\.com|wehkamp/i, category: 'shopping' },
-  { pattern: /huur|hypotheek|energie|nuon|vattenfall|eneco|essent|water |woningcorpor|vve |internet|glasvezel/i, category: 'wonen' },
-  { pattern: /school|universit|cursus|boek|udemy|coursera|linkedin learning|opleiding/i, category: 'opleiding' },
-  { pattern: /cinema|bioscoop|pathé|vue |theater|concert|museum|netflix|spotify|youtube/i, category: 'entertainment' },
+  { pattern: /ns |ov-chip|shell|esso|bp |q8|total energy|parkeer|parking|sixt|uber|bolt taxi|easypark/i, category: 'transport' },
+  { pattern: /netflix|spotify|apple |disney|videoland|amazon prime|ziggo|kpn|t-mobile|tele2|hollandsnieuwe|lovable|microsoft|odido/i, category: 'abonnementen' },
+  { pattern: /zorgverzeker|apotheek|tandarts|huisarts|fysiotherap|ziekenhuis|cz |vgz |dsw |menzis|achmea|centraal beheer/i, category: 'gezondheid' },
+  { pattern: /restaurant|café|cafe |pizza|sushi|mcdonalds|kfc|burger king|subway|starbucks|domino|thuisbezorgd|deliveroo|uber eat|fratelli/i, category: 'horeca' },
+  { pattern: /zara|h&m|zalando|primark|ikea|action |hema |bijenkorf|coolblue|bol\.com|wehkamp|plutosport/i, category: 'shopping' },
+  { pattern: /huur|hypotheek|energie|nuon|vattenfall|eneco|essent|water |woningcorpor|vve |internet|glasvezel|allianz/i, category: 'wonen' },
+  { pattern: /school|universit|cursus|boek|udemy|coursera|linkedin learning|opleiding|duo /i, category: 'opleiding' },
+  { pattern: /cinema|bioscoop|pathé|vue |theater|concert|museum|youtube/i, category: 'entertainment' },
+  { pattern: /bright|goldrepublic|belegg|spaar/i, category: 'sparen' },
 ]
 
-function guessCategory(merchant: string, description: string): ExpenseCategory {
+const INTERNAL_CODES = new Set(['tb', 'cc'])
+
+function guessCategory(code: string, merchant: string, description: string): ExpenseCategory {
+  if (code === 'db') return 'abonnementen'  // bankkosten
   const text = `${merchant} ${description}`.toLowerCase()
   for (const { pattern, category } of CATEGORY_RULES) {
     if (pattern.test(text)) return category
@@ -30,13 +34,20 @@ function guessCategory(merchant: string, description: string): ExpenseCategory {
 // ─── CSV parsing ─────────────────────────────────────────────
 
 interface RaboRow {
-  date: string            // YYYY-MM-DD
-  amount: number          // altijd positief (alleen uitgaven)
+  date: string
+  amount: number
   merchant: string
   description: string
+  externalId: string
+  code: string
 }
 
-function parseRabobankCsv(text: string): RaboRow[] {
+interface ParseResult {
+  rows: RaboRow[]
+  skippedInternal: number
+}
+
+function parseRabobankCsv(text: string): ParseResult {
   const result = Papa.parse<Record<string, string>>(text, {
     header: true,
     skipEmptyLines: true,
@@ -44,31 +55,39 @@ function parseRabobankCsv(text: string): RaboRow[] {
   })
 
   const rows: RaboRow[] = []
+  let skippedInternal = 0
 
   for (const row of result.data) {
-    // Kolommen Rabobank CSV-export
-    const dateRaw    = row['Datum'] ?? row['Date'] ?? ''
-    const amountRaw  = row['Bedrag'] ?? row['Amount'] ?? ''
-    const merchant   = row['Naam tegenpartij'] ?? row['Name'] ?? ''
-    const desc1      = row['Omschrijving-1'] ?? row['Description'] ?? ''
-    const desc2      = row['Omschrijving-2'] ?? ''
-    const desc3      = row['Omschrijving-3'] ?? ''
+    const dateRaw   = row['Datum'] ?? row['Date'] ?? ''
+    const amountRaw = row['Bedrag'] ?? row['Amount'] ?? ''
+    const merchant  = (row['Naam tegenpartij'] ?? row['Name'] ?? '').trim()
+    const desc1     = row['Omschrijving-1'] ?? row['Description'] ?? ''
+    const desc2     = row['Omschrijving-2'] ?? ''
+    const desc3     = row['Omschrijving-3'] ?? ''
+    const volgnr    = (row['Volgnr'] ?? '').trim()
+    const code      = (row['Code'] ?? '').trim().toLowerCase()
 
     if (!dateRaw || !amountRaw) continue
 
-    // Bedrag: komma als decimaalscheider (nl-NL), negatief = uitgave
+    // Interne overboekingen en creditcard-aflossingen overslaan
+    if (INTERNAL_CODES.has(code)) { skippedInternal++; continue }
+
     const amountNum = parseFloat(amountRaw.replace(',', '.'))
-    if (isNaN(amountNum) || amountNum >= 0) continue // Sla inkomsten over
+    if (isNaN(amountNum) || amountNum >= 0) continue  // inkomsten overslaan
+
+    const description = [desc1, desc2, desc3].filter(Boolean).join(' ').trim().slice(0, 280)
 
     rows.push({
       date: dateRaw,
       amount: Math.abs(amountNum),
-      merchant: merchant.trim(),
-      description: [desc1, desc2, desc3].filter(Boolean).join(' ').trim(),
+      merchant,
+      description,
+      externalId: volgnr,
+      code,
     })
   }
 
-  return rows
+  return { rows, skippedInternal }
 }
 
 // ─── Import rij ──────────────────────────────────────────────
@@ -83,23 +102,25 @@ interface ImportRow extends RaboRow {
 
 export function ExpenseImport() {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const queryClient = useQueryClient()
+
   const [rows, setRows] = useState<ImportRow[]>([])
+  const [skippedInternal, setSkippedInternal] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
-  const [imported, setImported] = useState<number | null>(null)
-
-  const createExpense = useCreateExpense()
+  const [importResult, setImportResult] = useState<{ inserted: number; skipped: number } | null>(null)
 
   const fmt = new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' })
 
   function handleFile(file: File) {
     setError(null)
-    setImported(null)
+    setImportResult(null)
     const reader = new FileReader()
     reader.onload = (e) => {
       const text = e.target?.result as string
       try {
-        const parsed = parseRabobankCsv(text)
+        const { rows: parsed, skippedInternal: skipped } = parseRabobankCsv(text)
+        setSkippedInternal(skipped)
         if (parsed.length === 0) {
           setError('Geen uitgaven gevonden in dit bestand. Controleer of het een Rabobank CSV is.')
           return
@@ -108,7 +129,7 @@ export function ExpenseImport() {
           parsed.map((r, i) => ({
             ...r,
             id: i,
-            category: guessCategory(r.merchant, r.description),
+            category: guessCategory(r.code, r.merchant, r.description),
             selected: true,
           }))
         )
@@ -142,41 +163,55 @@ export function ExpenseImport() {
     const toImport = rows.filter((r) => r.selected)
     if (toImport.length === 0) return
     setImporting(true)
-    let count = 0
-    for (const row of toImport) {
-      try {
-        await createExpense.mutateAsync({
-          amount: row.amount,
-          category: row.category,
-          description: row.merchant || row.description || null,
-          date: row.date,
-        })
-        count++
-      } catch {
-        // ga door met de rest
-      }
+
+    const payload = toImport.map((r) => ({
+      amount: r.amount,
+      category: r.category,
+      description: r.merchant || r.description || null,
+      date: r.date,
+      external_id: r.externalId || null,
+    }))
+
+    try {
+      const res = await fetch('/api/expenses/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: payload }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      const result = await res.json() as { inserted: number; skipped: number }
+      setImportResult(result)
+      setRows([])
+      queryClient.invalidateQueries({ queryKey: ['expenses'] })
+      queryClient.invalidateQueries({ queryKey: ['expense-summary'] })
+    } catch {
+      setError('Import mislukt. Probeer het opnieuw.')
+    } finally {
+      setImporting(false)
     }
-    setImporting(false)
-    setImported(count)
-    setRows([])
   }
 
   const selectedCount = rows.filter((r) => r.selected).length
 
-  if (imported !== null) {
+  if (importResult !== null) {
     return (
       <div className="rounded-2xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-[#0F0F0F] px-8 py-16 flex flex-col items-center gap-4 text-center">
         <div className="h-12 w-12 rounded-2xl bg-green-50 dark:bg-green-950/30 flex items-center justify-center text-2xl">✓</div>
         <div className="space-y-1.5">
           <p className="text-sm font-semibold text-stone-900 dark:text-white">
-            {imported} uitgave{imported !== 1 ? 'n' : ''} geïmporteerd
+            {importResult.inserted} uitgave{importResult.inserted !== 1 ? 'n' : ''} geïmporteerd
           </p>
+          {importResult.skipped > 0 && (
+            <p className="text-xs text-stone-400 dark:text-stone-500">
+              {importResult.skipped} al aanwezig — overgeslagen
+            </p>
+          )}
           <p className="text-xs text-stone-400 dark:text-stone-500">
             Ze zijn nu zichtbaar in je Uitgaven-overzicht.
           </p>
         </div>
         <button
-          onClick={() => { setImported(null); setRows([]) }}
+          onClick={() => { setImportResult(null); setRows([]) }}
           className="rounded-xl border border-stone-200 dark:border-stone-800 px-5 py-2.5 text-sm font-medium text-stone-600 dark:text-stone-400 hover:bg-stone-50 dark:hover:bg-stone-900 transition"
         >
           Nog een bestand importeren
@@ -188,7 +223,6 @@ export function ExpenseImport() {
   if (rows.length === 0) {
     return (
       <div className="space-y-6">
-        {/* Uitleg */}
         <div className="rounded-2xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-[#0F0F0F] p-5 space-y-3">
           <p className="text-sm font-semibold text-stone-900 dark:text-white">Hoe download je je Rabobank transacties?</p>
           <ol className="space-y-1.5 text-xs text-stone-500 dark:text-stone-400 list-decimal list-inside">
@@ -200,7 +234,6 @@ export function ExpenseImport() {
           </ol>
         </div>
 
-        {/* Upload area */}
         <div
           onDrop={handleDrop}
           onDragOver={(e) => e.preventDefault()}
@@ -239,8 +272,10 @@ export function ExpenseImport() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-stone-500 dark:text-stone-400">
-          <strong className="text-stone-900 dark:text-white">{rows.length}</strong> uitgaven gevonden —{' '}
-          pas de categorieën aan en importeer
+          <strong className="text-stone-900 dark:text-white">{rows.length}</strong> uitgaven gevonden
+          {skippedInternal > 0 && (
+            <span className="text-stone-400 dark:text-stone-600"> — {skippedInternal} overgeslagen (interne transfers)</span>
+          )}
         </p>
         <button
           onClick={() => setRows([])}
@@ -252,7 +287,6 @@ export function ExpenseImport() {
 
       {/* Tabel */}
       <div className="rounded-2xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-[#0F0F0F] overflow-hidden">
-        {/* Tabel-header */}
         <div className="flex items-center gap-3 px-4 py-2.5 border-b border-stone-100 dark:border-stone-900 bg-stone-50 dark:bg-stone-900/50">
           <input
             type="checkbox"
@@ -265,7 +299,6 @@ export function ExpenseImport() {
           <span className="text-[10px] font-medium text-stone-400 uppercase tracking-wide w-36">Categorie</span>
         </div>
 
-        {/* Rijen */}
         <div className="divide-y divide-stone-50 dark:divide-stone-900 max-h-[480px] overflow-y-auto">
           {rows.map((row) => (
             <label

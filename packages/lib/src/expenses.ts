@@ -10,7 +10,7 @@ import { EXPENSE_CATEGORIES } from '@habit-tracker/types'
 // ─── Input types ─────────────────────────────────────────────
 
 export type CreateExpenseInput = Pick<Expense, 'amount' | 'category' | 'date'> &
-  Partial<Pick<Expense, 'description' | 'currency'>>
+  Partial<Pick<Expense, 'description' | 'currency' | 'external_id'>>
 
 export type UpdateExpenseInput = Partial<CreateExpenseInput>
 
@@ -53,6 +53,43 @@ export async function createExpense(
 
   if (error) throw new Error(error.message)
   return data
+}
+
+// ─── Batch import ────────────────────────────────────────────
+
+export interface BatchImportResult {
+  inserted: number
+  skipped: number
+}
+
+/**
+ * Importeert meerdere uitgaven in één keer.
+ * Rijen met een bestaand (user_id, external_id) worden overgeslagen (DO NOTHING).
+ */
+export async function batchImportExpenses(
+  client: SupabaseClient,
+  userId: string,
+  rows: CreateExpenseInput[],
+): Promise<BatchImportResult> {
+  const payload = rows.map((r) => ({
+    ...r,
+    user_id: userId,
+    currency: r.currency ?? 'EUR',
+  }))
+
+  const { data, error } = await client
+    .from('expenses')
+    .upsert(payload, {
+      onConflict: 'user_id,external_id',
+      ignoreDuplicates: true,
+    })
+    .select('id')
+
+  if (error) throw new Error(error.message)
+
+  const inserted = data?.length ?? 0
+  const skipped  = rows.length - inserted
+  return { inserted, skipped }
 }
 
 export async function updateExpense(

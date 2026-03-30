@@ -43,6 +43,7 @@ export interface Expense {
   category: ExpenseCategory
   description: string | null
   date: string            // 'YYYY-MM-DD' — mirrors Completion.date
+  external_id: string | null  // Rabobank Volgnr voor duplicate-detectie
   created_at: string
 }
 
