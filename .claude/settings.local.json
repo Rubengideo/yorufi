@@ -40,7 +40,13 @@
       "Bash(env)",
       "Read(//Users/rubengideonse/**)",
       "Bash(npx tsc --noEmit)",
-      "mcp__claude_ai_Supabase__execute_sql"
+      "mcp__claude_ai_Supabase__execute_sql",
+      "Bash(gh --version)",
+      "Bash(brew --version)",
+      "Bash(ssh-keygen -t ed25519 -C \"yorufi-deploy\" -f ~/.ssh/github_yorufi -N \"\")",
+      "Bash(GIT_SSH_COMMAND=\"ssh -i ~/.ssh/github_yorufi\" git push -u origin main)",
+      "Bash(pnpm --filter=web build)",
+      "Bash(pnpm --filter=web exec tsc --noEmit)"
     ]
   }
 }

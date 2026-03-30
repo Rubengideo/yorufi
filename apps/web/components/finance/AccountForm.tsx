@@ -38,7 +38,7 @@ export function AccountForm({ account, onSuccess, onCancel, defaultIsLiability =
   const [name, setName] = useState(account?.name ?? '')
   const [type, setType] = useState<FinanceAccount['type']>(account?.type ?? 'bank')
   const [liabilityType, setLiabilityType] = useState<string>(
-    account ? (LIABILITY_TYPES.find(t => t.value === account.type)?.value ?? 'overig') : 'studielening'
+    account ? (LIABILITY_TYPES.find(t => t.value === (account.type as string))?.value ?? 'overig') : 'studielening'
   )
   const [currency, setCurrency] = useState(account?.currency ?? 'EUR')
   const [institution, setInstitution] = useState(account?.institution ?? '')

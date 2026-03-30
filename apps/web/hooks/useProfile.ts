@@ -29,8 +29,10 @@ export function useUpdateProfile() {
   const { data: userId } = useUserId()
 
   return useMutation({
-    mutationFn: (updates: Partial<Omit<Profile, 'id' | 'created_at'>>) =>
-      supabase.from('profiles').update(updates).eq('id', userId!),
+    mutationFn: async (updates: Partial<Omit<Profile, 'id' | 'created_at'>>) => {
+      const { error } = await supabase.from('profiles').update(updates).eq('id', userId!)
+      if (error) throw error
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile', userId] })
     },
