@@ -335,5 +335,40 @@ function enrichGoal(goal: FinanceGoal, today: string): FinanceGoalWithProgress {
   const progress = Math.min(goal.current_amount / goal.target_amount, 1)
   const remaining = Math.max(goal.target_amount - goal.current_amount, 0)
   const is_overdue = !!goal.deadline && goal.deadline < today && !goal.completed_at
-  return { ...goal, progress, remaining, is_overdue }
+
+  // Projectie: bereken gemiddelde maandelijkse bijdrage op basis van looptijd
+  let monthly_avg_contribution: number | null = null
+  let projected_months_remaining: number | null = null
+  let projected_completion_date: string | null = null
+
+  if (!goal.completed_at && goal.current_amount > 0) {
+    const created = new Date(goal.created_at)
+    const now = new Date(today)
+    const monthsElapsed =
+      (now.getFullYear() - created.getFullYear()) * 12 +
+      (now.getMonth() - created.getMonth())
+
+    if (monthsElapsed > 0) {
+      monthly_avg_contribution = goal.current_amount / monthsElapsed
+      if (remaining > 0) {
+        projected_months_remaining = Math.ceil(remaining / monthly_avg_contribution)
+        const completion = new Date(now)
+        completion.setMonth(completion.getMonth() + projected_months_remaining)
+        projected_completion_date = completion.toISOString().slice(0, 10)
+      } else {
+        projected_months_remaining = 0
+        projected_completion_date = today
+      }
+    }
+  }
+
+  return {
+    ...goal,
+    progress,
+    remaining,
+    is_overdue,
+    monthly_avg_contribution,
+    projected_months_remaining,
+    projected_completion_date,
+  }
 }
