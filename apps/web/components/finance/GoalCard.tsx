@@ -225,6 +225,25 @@ export function GoalCard({ goal, onArchive }: GoalCardProps) {
           )}
         </div>
       )}
+
+      {/* Projectie op basis van gemiddelde maandelijkse bijdrage */}
+      {!goal.completed_at && (
+        <div className="text-xs text-stone-400 dark:text-stone-500">
+          {goal.projected_completion_date ? (
+            <span>
+              Op dit tempo bereik je je doel{' '}
+              <span className="font-medium text-stone-600 dark:text-stone-300">
+                ~{new Date(goal.projected_completion_date + 'T12:00:00').toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' })}
+              </span>
+              {goal.monthly_avg_contribution !== null && (
+                <span className="ml-1">({fmt.format(Math.round(goal.monthly_avg_contribution))}/mnd gem.)</span>
+              )}
+            </span>
+          ) : (
+            <span className="italic">Voeg een bijdrage toe voor een tempo-projectie</span>
+          )}
+        </div>
+      )}
     </motion.div>
   )
 }

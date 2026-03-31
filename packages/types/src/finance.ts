@@ -63,6 +63,12 @@ export interface FinanceGoalWithProgress extends FinanceGoal {
   progress: number      // current_amount / target_amount, clamped 0–1
   remaining: number     // target_amount - current_amount (>= 0)
   is_overdue: boolean
+  /** Gemiddelde maandelijkse bijdrage op basis van huidige bedrag en leeftijd van het doel */
+  monthly_avg_contribution: number | null
+  /** Geschatte resterende maanden op dit tempo */
+  projected_months_remaining: number | null
+  /** Geschatte voltooiingsdatum als 'YYYY-MM-DD' */
+  projected_completion_date: string | null
 }
 
 /** Netto vermogen samenvatting — berekend in de lib, gebruikt door het dashboard */

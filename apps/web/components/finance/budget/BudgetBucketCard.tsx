@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import type { BudgetBucketSummary, BudgetItem } from '@habit-tracker/types'
+import { EXPENSE_CATEGORIES } from '@habit-tracker/types'
 import { useDeleteBudgetItem } from '@/hooks/useBudget'
 import { BudgetItemForm } from './BudgetItemForm'
 
@@ -14,7 +15,12 @@ interface BudgetBucketCardProps {
 export function BudgetBucketCard({ summary, currency }: BudgetBucketCardProps) {
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingItem, setEditingItem] = useState<BudgetItem | null>(null)
+  const [showCategories, setShowCategories] = useState(false)
   const deleteItem = useDeleteBudgetItem()
+
+  const categoryEntries = Object.entries(summary.spent_by_category)
+    .filter(([, amount]) => amount > 0)
+    .sort(([, a], [, b]) => b - a) as [string, number][]
 
   const fmt = new Intl.NumberFormat('nl-NL', {
     style: 'currency',
@@ -183,6 +189,49 @@ export function BudgetBucketCard({ summary, currency }: BudgetBucketCardProps) {
           </p>
         )}
       </div>
+
+      {/* ── Werkelijke uitgaven per categorie ────────────────────── */}
+      {categoryEntries.length > 0 && (
+        <div className="border-t border-stone-100 dark:border-stone-900">
+          <button
+            onClick={() => setShowCategories((v) => !v)}
+            className="w-full flex items-center justify-between px-5 py-2.5 text-xs text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300 transition"
+          >
+            <span className="font-medium">Werkelijk per categorie</span>
+            <span className="text-[10px]">{showCategories ? '▲' : '▼'}</span>
+          </button>
+          {showCategories && (
+            <div className="px-5 pb-3 space-y-2">
+              {categoryEntries.map(([cat, amount]) => {
+                const meta = EXPENSE_CATEGORIES.find((c) => c.value === cat)
+                const barPct = summary.spent_amount > 0
+                  ? Math.round((amount / summary.spent_amount) * 100)
+                  : 0
+                const fmt2 = new Intl.NumberFormat('nl-NL', { style: 'currency', currency, maximumFractionDigits: 0 })
+                return (
+                  <div key={cat} className="space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-1.5 text-xs text-stone-600 dark:text-stone-300 min-w-0">
+                        <span>{meta?.icon ?? '•'}</span>
+                        <span className="truncate">{meta?.label ?? cat}</span>
+                      </span>
+                      <span className="text-xs font-medium text-stone-700 dark:text-stone-200 tabular-nums shrink-0">
+                        {fmt2.format(amount)}
+                      </span>
+                    </div>
+                    <div className="h-1 w-full rounded-full bg-stone-100 dark:bg-stone-900 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${barPct}%`, backgroundColor: summary.color }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Formulier / toevoeg-knop ───────────────────────────── */}
       <div className="px-5 pb-3 pt-1">

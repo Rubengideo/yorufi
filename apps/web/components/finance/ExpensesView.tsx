@@ -38,6 +38,7 @@ export function ExpensesView() {
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [showAddForm, setShowAddForm] = useState(false)
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const prevMonth = month === 1 ? 12 : month - 1
   const prevYear  = month === 1 ? year - 1 : year
@@ -51,11 +52,17 @@ export function ExpensesView() {
     setMonth(m)
     setShowAddForm(false)
     setActiveCategory(null)
+    setSearchQuery('')
   }
 
-  const filteredExpenses = activeCategory
-    ? (expenses ?? []).filter((e) => e.category === activeCategory)
-    : (expenses ?? [])
+  const filteredExpenses = (expenses ?? []).filter((e) => {
+    if (activeCategory && e.category !== activeCategory) return false
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase()
+      return e.description?.toLowerCase().includes(q) ?? false
+    }
+    return true
+  })
 
   return (
     <div className="space-y-4">
@@ -84,6 +91,33 @@ export function ExpensesView() {
         </div>
       </div>
 
+      {/* Zoekbalk */}
+      <div className="relative">
+        <svg
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-600"
+          width="13" height="13" viewBox="0 0 14 14" fill="none"
+          stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+        >
+          <circle cx="6" cy="6" r="4.5" />
+          <path d="M10 10l2.5 2.5" />
+        </svg>
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Zoek op omschrijving…"
+          className="w-full rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-[#0F0F0F] pl-8 pr-8 py-2.5 text-sm text-stone-950 dark:text-white placeholder:text-stone-400 dark:placeholder:text-stone-600 outline-none focus:border-stone-400 dark:focus:border-stone-600 transition"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 transition text-xs leading-none"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
       {/* Totaal + vergelijking vorige maand */}
       <ExpenseSummary summary={summary ?? null} isLoading={summaryLoading} />
 
@@ -96,21 +130,29 @@ export function ExpensesView() {
         activeCategory={activeCategory}
       />
 
-      {/* Categorie-filter indicatie */}
-      {activeCategory && (
-        <div className="flex items-center gap-2 px-1">
-          <span className="text-xs text-stone-400 dark:text-stone-500">
-            Filter:{' '}
-            <strong className="text-stone-700 dark:text-stone-300">
-              {EXPENSE_CATEGORIES.find((c) => c.value === activeCategory)?.label}
-            </strong>
-          </span>
-          <button
-            onClick={() => setActiveCategory(null)}
-            className="text-[10px] text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 transition"
-          >
-            Alles tonen ✕
-          </button>
+      {/* Filter indicatie */}
+      {(activeCategory || searchQuery.trim()) && (
+        <div className="flex items-center gap-2 px-1 flex-wrap">
+          {activeCategory && (
+            <span className="flex items-center gap-1.5 text-xs text-stone-400 dark:text-stone-500">
+              Categorie:{' '}
+              <strong className="text-stone-700 dark:text-stone-300">
+                {EXPENSE_CATEGORIES.find((c) => c.value === activeCategory)?.label}
+              </strong>
+              <button
+                onClick={() => setActiveCategory(null)}
+                className="text-[10px] hover:text-stone-600 dark:hover:text-stone-300 transition"
+              >
+                ✕
+              </button>
+            </span>
+          )}
+          {searchQuery.trim() && (
+            <span className="text-xs text-stone-400 dark:text-stone-500">
+              {filteredExpenses.length} resultaat{filteredExpenses.length !== 1 ? 'en' : ''} voor{' '}
+              <strong className="text-stone-700 dark:text-stone-300">"{searchQuery}"</strong>
+            </span>
+          )}
         </div>
       )}
 
